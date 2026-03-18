@@ -16,50 +16,175 @@ Ensures correct API usage, proper state management for each pattern, and alignme
 
 ---
 
-## Navigation (Navigation Compose)
+## Navigation (Navigation 3)
 
-Use **Navigation Compose** as the standard routing solution.
+Use **Navigation 3** (`androidx.navigation3`) as the standard routing solution. Nav3 is stable as of version 1.0 and is the Compose-first replacement for Nav2.
+
+> ⚠️ **Do not use the old `NavHost` / `NavController` Nav2 API for new screens.** Nav3 is the current standard.
+
+### Dependency
+
+```kotlin
+implementation("androidx.navigation3:navigation3-runtime:1.0.0")
+implementation("androidx.navigation3:navigation3-ui:1.0.0")
+```
+
+### Core Concepts
+
+Nav3 replaces the hidden Nav2 back stack with a plain `SnapshotStateList`. Navigating is just adding and removing items from that list — the UI reacts automatically.
+
+| Nav3 Concept | What it is |
+|---|---|
+| `NavKey` | A serializable object representing a destination |
+| `rememberNavBackStack` | Creates and persists the back stack list |
+| `NavDisplay` | Composable that observes the back stack and renders screens |
+| `entryProvider` | Maps keys to their screen composables |
 
 ### Setup
 
+**Step 1 — Define your destinations as keys:**
+
+```kotlin
+// Each destination is a simple serializable object or data class
+@Serializable
+object HomeKey : NavKey
+
+@Serializable
+data class WorkoutDetailKey(val workoutId: String) : NavKey
+
+@Serializable
+object ProfileKey : NavKey
+```
+
+**Step 2 — Create the back stack and wire up NavDisplay:**
+
 ```kotlin
 @Composable
-fun AppNavGraph(
-    navController: NavHostController = rememberNavController()
-) {
-    NavHost(
-        navController = navController,
-        startDestination = "home"
-    ) {
-        composable("home") { HomeScreen(navController) }
-        composable(
-            route = "detail/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.StringType })
-        ) { backStackEntry ->
-            DetailScreen(
-                id = backStackEntry.arguments?.getString("id").orEmpty(),
-                navController = navController
-            )
+fun AppNavigation() {
+    // rememberNavBackStack persists across config changes and process death
+    val backStack = rememberNavBackStack(HomeKey)
+
+    NavDisplay(
+        backStack = backStack,
+        entryProvider = entryProvider {
+            entry<HomeKey> {
+                HomeScreen(
+                    onNavigateToWorkout = { id ->
+                        backStack.add(WorkoutDetailKey(id))
+                    }
+                )
+            }
+            entry<WorkoutDetailKey> { key ->
+                WorkoutDetailScreen(
+                    workoutId = key.workoutId,
+                    onBack = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<ProfileKey> {
+                ProfileScreen(
+                    onBack = { backStack.removeLastOrNull() }
+                )
+            }
         }
+    )
+}
+```
+
+**Step 3 — Use in Activity:**
+
+```kotlin
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
+    setContent {
+        AppTheme {
+            AppNavigation()
+        }
+    }
+}
+```
+
+### Navigating
+
+```kotlin
+// Push a new destination
+backStack.add(WorkoutDetailKey(workoutId = "abc123"))
+
+// Go back
+backStack.removeLastOrNull()
+
+// Go back to a specific destination, popping everything above it
+backStack.removeAll { it is WorkoutDetailKey }
+
+// Conditional navigation (e.g. redirect to login)
+if (!isLoggedIn) {
+    backStack.clear()
+    backStack.add(LoginKey)
+}
+```
+
+### Bottom Navigation with Multiple Back Stacks
+
+```kotlin
+@Composable
+fun AppNavigation() {
+    val backStack = rememberNavBackStack(HomeKey)
+    val currentTopKey = backStack.lastOrNull()
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = currentTopKey is HomeKey,
+                    onClick = {
+                        backStack.clear()
+                        backStack.add(HomeKey)
+                    },
+                    icon = { Icon(Icons.Default.Home, null) },
+                    label = { Text("Home") }
+                )
+                NavigationBarItem(
+                    selected = currentTopKey is ProfileKey,
+                    onClick = {
+                        backStack.clear()
+                        backStack.add(ProfileKey)
+                    },
+                    icon = { Icon(Icons.Default.Person, null) },
+                    label = { Text("Profile") }
+                )
+            }
+        }
+    ) { innerPadding ->
+        NavDisplay(
+            backStack = backStack,
+            modifier = Modifier.padding(innerPadding),
+            entryProvider = entryProvider {
+                entry<HomeKey> { HomeScreen() }
+                entry<ProfileKey> { ProfileScreen() }
+            }
+        )
     }
 }
 ```
 
 ### Rules
 
-- Define routes as **constants or a sealed class**, never raw strings at call sites.
-- Pass `NavController` only to screen-level composables. Children navigate via **callbacks**.
-- Use `SavedStateHandle` in ViewModel to read nav arguments — don't pass them directly through the call stack.
-- For complex apps, scope `NavController` per nav graph and use **nested graphs**.
+- **Never pass `backStack` into child composables** — only screen-level composables should add/remove from it. Children navigate via callbacks.
+- **Keys must be `@Serializable`** if you use `rememberNavBackStack` — this is what enables persistence across process death.
+- **Pass arguments via the key itself** (e.g. `WorkoutDetailKey(id)`) — not via `SavedStateHandle` or string routes.
+- **ViewModels** can still read arguments via `SavedStateHandle` when Nav3 is used with Hilt.
 
-```kotlin
-// ✅ Route constants
-object Routes {
-    const val HOME = "home"
-    const val DETAIL = "detail/{id}"
-    fun detail(id: String) = "detail/$id"
-}
-```
+### Migrating from Nav2
+
+If you have existing Nav2 code (`NavHost`, `NavController`, string routes), migrate screen by screen:
+
+| Nav2 | Nav3 equivalent |
+|------|----------------|
+| `NavController.navigate("detail/123")` | `backStack.add(DetailKey("123"))` |
+| `NavController.popBackStack()` | `backStack.removeLastOrNull()` |
+| `NavHost { composable("home") { ... } }` | `NavDisplay(entryProvider { entry<HomeKey> { ... } })` |
+| `navArgument("id")` | Property on the key: `data class DetailKey(val id: String)` |
+| `rememberNavController()` | `rememberNavBackStack(startKey)` |
 
 ---
 
@@ -269,8 +394,10 @@ Modifier.padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPad
 ## Checklist
 
 - [ ] `Scaffold` used as screen root — `innerPadding` consumed
-- [ ] Navigation routes defined as constants, not inline strings
-- [ ] `NavController` not passed into non-screen composables
+- [ ] Using Navigation 3 (`androidx.navigation3`) not Nav2 `NavHost`
+- [ ] Nav keys are `@Serializable` data classes or objects
+- [ ] Arguments passed via key properties, not string routes
+- [ ] `backStack` not passed into non-screen composables
 - [ ] Bottom sheet handles `onDismissRequest`
 - [ ] `LazyColumn` items have stable `key` values
 - [ ] Snackbars triggered via `UiEvent`, not called directly in composables
