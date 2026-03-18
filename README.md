@@ -117,6 +117,43 @@ Ensures correct `MaterialTheme` setup, proper token usage, Dynamic Color adoptio
 
 ---
 
+## AndroidBuildMCP
+
+These skills pair with **[AndroidBuildMCP](https://github.com/QyperXit/androidbuildmcp)** — a companion MCP server that gives your AI agent direct control over your Android emulator, build system, and app lifecycle.
+
+Think of the skills as the **rulebook** and AndroidBuildMCP as the **hands** — the skills tell the agent how to write good Android code, and the MCP server lets it build, run, and test that code on a real emulator.
+
+### Install AndroidBuildMCP
+
+```bash
+npx androidbuildmcp@latest
+```
+
+Or add it to your VS Code MCP config:
+
+```json
+{
+  "mcpServers": {
+    "AndroidBuildMCP": {
+      "command": "npx",
+      "args": ["-y", "androidbuildmcp@latest"]
+    }
+  }
+}
+```
+
+Once connected your agent can:
+- Build your app via Gradle
+- Launch it on an emulator
+- Tap, swipe, and type on the UI
+- Take screenshots so it can see the screen
+- Read logcat and capture crash traces
+
+→ [AndroidBuildMCP on GitHub](https://github.com/QyperXit/androidbuildmcp)
+→ [AndroidBuildMCP on npm](https://www.npmjs.com/package/androidbuildmcp)
+
+---
+
 ## Usage
 
 Each skill is self-contained. To use one, point your AI coding assistant at the relevant `SKILL.md` file and ask it to follow the guidelines within.
@@ -124,6 +161,12 @@ Each skill is self-contained. To use one, point your AI coding assistant at the 
 For example, in Claude Code:
 ```
 Read android-skills/compose-performance-audit/SKILL.md and then audit this screen for performance issues.
+```
+
+Or combine skills with AndroidBuildMCP:
+```
+Read android-skills/compose-view-refactor/SKILL.md, refactor ProfileScreen.kt, 
+then build and take a screenshot so we can verify it looks correct.
 ```
 
 ## Structure
